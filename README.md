@@ -42,18 +42,25 @@ This Node.js application scrapes insider trading data from [OpenInsider.com](htt
     - Note the **Spreadsheet ID** from the URL (e.g., `https://docs.google.com/spreadsheets/d/YOUR_SPREADSHEET_ID/edit`).
 
 3.  **Environment Variables**:
-    - Create a `.env` file in the project root:
-
-    ```bash
-    touch .env
-    ```
-
-    - Add the following variables:
+    - Create a `.env` file in the root directory:
 
     ```env
-    SPREADSHEET_ID=your_spreadsheet_id_here
-    GOOGLE_APPLICATION_CREDENTIALS=./service_account.json
+    SPREADSHEET_ID=your_google_sheet_id
+    GOOGLE_APPLICATION_CREDENTIALS=path_to_your_service_account.json
+    DISCORD_WEBHOOK_URL=your_discord_webhook_url
+    ENABLE_DISCORD_NOTIFICATIONS=true
     ```
+
+### Discord Notifications
+
+To enable Discord notifications:
+
+1.  Create a Webhook in your Discord Server (Channel Settings > Integrations > Webhooks).
+2.  Copy the Webhook URL.
+3.  Add `DISCORD_WEBHOOK_URL=your_url` to your `.env` file.
+4.  Set `ENABLE_DISCORD_NOTIFICATIONS=true`.
+
+To disable notifications, set `ENABLE_DISCORD_NOTIFICATIONS=false` or remove the variable.
 
 ## Usage
 
