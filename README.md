@@ -43,11 +43,13 @@ This Node.js application scrapes insider trading data from [OpenInsider.com](htt
 
 3.  **Environment Variables**:
     - Create a `.env` file in the project root:
+
     ```bash
     touch .env
     ```
 
     - Add the following variables:
+
     ```env
     SPREADSHEET_ID=your_spreadsheet_id_here
     GOOGLE_APPLICATION_CREDENTIALS=./service_account.json
@@ -68,7 +70,7 @@ To run this script automatically (e.g., every hour), you can use `cron` on Linux
 **Example Crontab (runs every hour):**
 
 ```bash
-0 * * * * /usr/bin/node /path/to/openinsider-scraper/index.js >> /path/to/openinsider-scraper/logfile.log 2>&1
+0 17 * * * /usr/bin/node /path/to/openinsider-scraper/index.js >> /path/to/openinsider-scraper/logfile.log 2>&1
 ```
 
 ## Project Structure
