@@ -1,8 +1,9 @@
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '.env') });
+
 const { scrapeData } = require('./scraper');
 const { getExistingData, prependData, initializeSheetHeaders } = require('./sheets');
 const axios = require('axios');
-const path = require('path');
-require('dotenv').config({ path: path.resolve(__dirname, '.env') });
 
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
 const ENABLE_DISCORD_NOTIFICATIONS = process.env.ENABLE_DISCORD_NOTIFICATIONS === 'true';

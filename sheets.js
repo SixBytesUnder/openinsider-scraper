@@ -1,5 +1,5 @@
 const { google } = require('googleapis');
-require('dotenv').config();
+
 
 const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
 const SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
