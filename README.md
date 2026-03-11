@@ -8,12 +8,15 @@ This Node.js application scrapes insider trading data from [OpenInsider.com](htt
 - **Deduplication**: Checks existing data in the Google Sheet to prevent duplicate entries.
 - **Smart Updates**: Prepends new data to the top of the sheet, ensuring the most recent trades are always visible first.
 - **Auto-Initialization**: Automatically creates column headers if the sheet is empty.
+- **AI Analysis**: Uses the Gemini API to analyze the entire historical trading dataset to detect patterns and suggest stock purchases or sales.
+- **Discord Integration**: Sends scraping summaries and AI predictions directly to a Discord webbhook.
 
 ## Prerequisites
 
 - [Node.js](https://nodejs.org/) (v16 or higher recommended)
 - A Google Cloud Platform project with the **Google Sheets API** enabled.
 - A Service Account with access to the target Google Sheet.
+- A Google Gemini API Key for AI analysis.
 
 ## Installation
 
@@ -49,6 +52,7 @@ This Node.js application scrapes insider trading data from [OpenInsider.com](htt
     GOOGLE_APPLICATION_CREDENTIALS=path_to_your_service_account.json
     DISCORD_WEBHOOK_URL=your_discord_webhook_url
     ENABLE_DISCORD_NOTIFICATIONS=true
+    GEMINI_API_KEY=your_gemini_api_key
     ```
 
 ### Discord Notifications
@@ -61,6 +65,14 @@ To enable Discord notifications:
 4.  Set `ENABLE_DISCORD_NOTIFICATIONS=true`.
 
 To disable notifications, set `ENABLE_DISCORD_NOTIFICATIONS=false` or remove the variable.
+
+### Gemini AI Analysis
+
+To enable the Gemini AI predictions:
+
+1. Obtain an API key from [Google AI Studio](https://aistudio.google.com/app/apikey).
+2. Add `GEMINI_API_KEY=your_api_key` to your `.env` file.
+3. The script will automatically format your historical spreadsheet data into JSON and pass it to Gemini for pattern analysis whenever new rows are found. Predictions are sent to the Discord webhook.
 
 ## Usage
 
@@ -85,6 +97,7 @@ To run this script automatically (e.g., every hour), you can use `cron` on Linux
 - `index.js`: Main entry point. Orchestrates scraping, deduplication, and updating.
 - `scraper.js`: Handles fetching and parsing data from OpenInsider.
 - `sheets.js`: Manages Google Sheets API interactions (read, write, prepend).
+- `gemini.js`: Handles formatting spreadsheet data into JSON and querying the Gemini API for analysis.
 - `package.json`: Project dependencies and scripts.
 
 ## Dependencies
