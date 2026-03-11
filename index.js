@@ -3,6 +3,7 @@ require('dotenv').config({ path: path.resolve(__dirname, '.env') });
 
 const { scrapeData } = require('./scraper');
 const { getExistingData, prependData, initializeSheetHeaders } = require('./sheets');
+const { analyzeWithGemini } = require('./gemini');
 const axios = require('axios');
 
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
@@ -48,10 +49,8 @@ async function main() {
             return;
         }
 
-        // 3. Get Existing Data (top chunk)
-        // We only need enough to perform duplication checks. 
-        // Since we insert at top, the latest data is at the top.
-        const existingRows = await getExistingData(500); // Read top 500 rows
+        // Read all rows to use for analysis later, and for duplication checks
+        const existingRows = await getExistingData(null);
 
         // 4. Filter New Data
         // We need a unique key. 
@@ -95,6 +94,33 @@ async function main() {
             // This preserves the order.
             await prependData(newRows);
             await log(`[OpenInsider Scraper] Successfully added ${newRows.length} rows to the sheet.`);
+            
+            await log(`[OpenInsider Scraper] Analyzing all data with Gemini...`);
+            // Combine new rows and existing rows into a single array format
+            const updatedRows = [
+                ...newRows.map(row => [
+                    row.filingDate, row.tradeDate, row.ticker, row.companyName, 
+                    row.insiderName, row.title, row.tradeType, row.price, 
+                    row.qty, row.owned, row.deltaOwn, row.value
+                ]),
+                ...existingRows
+            ];
+            const analysis = await analyzeWithGemini(updatedRows);
+            if (analysis) {
+                await log(`[OpenInsider Scraper] Gemini Analysis complete. Sending to Discord.`);
+                if (ENABLE_DISCORD_NOTIFICATIONS && DISCORD_WEBHOOK_URL) {
+                    try {
+                        const chunks = analysis.match(/[\s\S]{1,1900}/g) || [];
+                        for (const chunk of chunks) {
+                            await axios.post(DISCORD_WEBHOOK_URL, {
+                                content: `🧠 **Gemini Analysis:**\n${chunk}`
+                            });
+                        }
+                    } catch (err) {
+                        console.error('Failed to send Gemini analysis to Discord:', err.message);
+                    }
+                }
+            }
         } else {
             await log('[OpenInsider Scraper] No new data to add.');
         }

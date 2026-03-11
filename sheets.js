@@ -14,9 +14,10 @@ const sheets = google.sheets({ version: 'v4', auth });
 
 async function getExistingData(limit = 200) {
     try {
+        const range = limit ? `Sheet1!A2:L${limit + 1}` : 'Sheet1!A2:L';
         const response = await sheets.spreadsheets.values.get({
             spreadsheetId: SPREADSHEET_ID,
-            range: `Sheet1!A2:L${limit + 1}`, // Assuming headers are in row 1
+            range: range,
         });
         return response.data.values || [];
     } catch (error) {
