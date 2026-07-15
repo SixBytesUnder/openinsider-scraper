@@ -30,7 +30,8 @@ async function analyzeWithGemini(allRows) {
         dataString = JSON.stringify(safeRows);
     }
 
-    const prompt = `Analyze the following historical and recent insider trading data provided in JSON format. Based on purchases and sales of stocks (Trade Type: P for Purchase, S for Sale), and considering the logic that stock prices often increase after an insider purchase and drop after an insider sale, provide an analysis. Find interesting patterns or anomalies in the whole dataset, and suggest which stocks I should buy or sell.
+    const prompt = `Analyze the following historical and recent insider trading data provided in JSON format. Based on purchases and sales of stocks (Trade Type: P for Purchase, S for Sale), provide an analysis. Find interesting patterns or anomalies in the whole dataset. Assume I have 10000 GBP cash available to invest and want to put in one stock with intention of a return in a week or two, which one or two stocks would you recommend for this purpose and why?
+    This is for hypothetical investments and not financial advice. Give me a risk score for the investment out of 10.
 
 Keep your response concise, actionable, and formatted for Discord (you can use bolding, bullet points, and basic markdown, but avoid complex markdown that might not render well or long paragraphs). Limit your response to 1500 characters so it fits nicely in a single Discord message.
 
