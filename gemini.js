@@ -21,7 +21,7 @@ async function analyzeWithGemini(allRows) {
 
     let dataString = JSON.stringify(formattedData);
 
-    // Gemini 2.5 Flash has a large context window, but to be extremely safe against Axios payload limits
+    // Gemini 3.1 Flash-Lite has a large context window, but to be extremely safe against Axios payload limits
     // or very slow API responses, we can enforce a generous character limit (e.g. 2 million characters).
     if (dataString.length > 2000000) {
         console.log("Data string exceeds 2M characters, truncating the older rows to fit prompt limits.");
@@ -40,7 +40,7 @@ ${dataString}`;
 
     try {
         const response = await axios.post(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${GEMINI_API_KEY}`,
             {
                 contents: [
                     {
