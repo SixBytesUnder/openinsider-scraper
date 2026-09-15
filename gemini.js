@@ -1,9 +1,17 @@
 const axios = require('axios');
+const { log } = require('./logger');
 
+/**
+ * Sends insider trading data to Google Gemini for AI-driven analysis and insights.
+ * @param {Array<Array<string>>} allRows - Array of trading row values
+ * @returns {Promise<string|null>} Generated analysis markdown or null on error
+ */
 async function analyzeWithGemini(allRows) {
     const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+    const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+
     if (!GEMINI_API_KEY) {
-        console.error("No Gemini API key found.");
+        await log("[Gemini] No Gemini API key found in environment.", true);
         return null;
     }
 
@@ -21,11 +29,9 @@ async function analyzeWithGemini(allRows) {
 
     let dataString = JSON.stringify(formattedData);
 
-    // Gemini 3.1 Flash-Lite has a large context window, but to be extremely safe against Axios payload limits
-    // or very slow API responses, we can enforce a generous character limit (e.g. 2 million characters).
+    // Guard against oversized payload limits (e.g. 2 million characters)
     if (dataString.length > 2000000) {
-        console.log("Data string exceeds 2M characters, truncating the older rows to fit prompt limits.");
-        // roughly slice to ensure it fits
+        await log("[Gemini] Data string exceeds 2M characters, truncating older rows to fit prompt limits.");
         const safeRows = formattedData.slice(0, 15000);
         dataString = JSON.stringify(safeRows);
     }
@@ -40,7 +46,7 @@ ${dataString}`;
 
     try {
         const response = await axios.post(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${GEMINI_API_KEY}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
             {
                 contents: [
                     {
@@ -52,22 +58,25 @@ ${dataString}`;
             },
             {
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'x-goog-api-key': GEMINI_API_KEY
                 }
             }
         );
 
         if (response.data && response.data.candidates && response.data.candidates.length > 0) {
-            let aiResponse = response.data.candidates[0].content.parts[0].text;
+            const aiResponse = response.data.candidates[0].content.parts[0].text;
             return aiResponse;
         } else {
-            console.error("Unexpected response from Gemini API:", response.data);
+            await log(`[Gemini] Unexpected response structure from API: ${JSON.stringify(response.data)}`, true);
             return null;
         }
     } catch (error) {
-        console.error("Error analyzing with Gemini:", error.response?.data || error.message);
+        const errMsg = error.response?.data?.error?.message || error.response?.data || error.message;
+        await log(`[Gemini] Error analyzing with Gemini (${GEMINI_MODEL}): ${errMsg}`, true);
         return null;
     }
 }
 
 module.exports = { analyzeWithGemini };
+

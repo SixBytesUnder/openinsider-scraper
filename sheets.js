@@ -1,56 +1,66 @@
 const { google } = require('googleapis');
+const { log } = require('./logger');
 
-
-const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
 const SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
 
-// Auth client
-const auth = new google.auth.GoogleAuth({
-    keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS,
-    scopes: SCOPES,
-});
+/**
+ * Lazily obtains an authenticated Google Sheets API client and spreadsheet configuration.
+ * @returns {{ sheets: google.sheets_v4.Sheets, spreadsheetId: string, sheetGridId: number, sheetName: string }}
+ */
+function getSheetsContext() {
+    const spreadsheetId = process.env.SPREADSHEET_ID;
+    const sheetGridId = parseInt(process.env.SHEET_GRID_ID || '0', 10);
+    const sheetName = process.env.SHEET_NAME || 'Sheet1';
+    const keyFile = process.env.GOOGLE_APPLICATION_CREDENTIALS;
 
-const sheets = google.sheets({ version: 'v4', auth });
+    const auth = new google.auth.GoogleAuth({
+        keyFile,
+        scopes: SCOPES,
+    });
 
+    const sheets = google.sheets({ version: 'v4', auth });
+    return { sheets, spreadsheetId, sheetGridId, sheetName };
+}
+
+/**
+ * Retrieves existing data from the Google Sheet.
+ * @param {number|null} [limit=200] - Row limit or null for all rows
+ * @returns {Promise<Array<Array<string>>>} Array of row data
+ */
 async function getExistingData(limit = 200) {
     try {
-        const range = limit ? `Sheet1!A2:L${limit + 1}` : 'Sheet1!A2:L';
+        const { sheets, spreadsheetId, sheetName } = getSheetsContext();
+        const range = limit ? `${sheetName}!A2:L${limit + 1}` : `${sheetName}!A2:L`;
         const response = await sheets.spreadsheets.values.get({
-            spreadsheetId: SPREADSHEET_ID,
-            range: range,
+            spreadsheetId,
+            range,
         });
         return response.data.values || [];
     } catch (error) {
-        console.error('Error reading from Sheets:', error);
-        // If the sheet is empty or doesn't exist, return empty array
+        await log(`[Google Sheets] Error reading from Sheets: ${error.message}`, true);
         return [];
     }
 }
 
+/**
+ * Inserts new rows at the top of the Google Sheet (after headers).
+ * @param {Array<object>} newRows - Array of scraped row objects to insert
+ */
 async function prependData(newRows) {
     if (newRows.length === 0) return;
 
-    // We need to insert these rows at the top (after header).
-    // Strategy: 
-    // 1. Insert blank rows at index 1 (meaning row 2).
-    // 2. Update those rows with data.
-    
-    // However, spreadsheets.values.append adds to the bottom.
-    // To 'prepend', we must physically move existing cells or insert dimension.
-    // Ideally:
-    // 1. Insert N empty rows at index 1.
-    // 2. Write data to these N rows.
-
     try {
-        // 1. Insert empty rows
+        const { sheets, spreadsheetId, sheetGridId, sheetName } = getSheetsContext();
+
+        // 1. Insert empty rows at row index 1 (directly beneath header row)
         await sheets.spreadsheets.batchUpdate({
-            spreadsheetId: SPREADSHEET_ID,
+            spreadsheetId,
             resource: {
                 requests: [
                     {
                         insertDimension: {
                             range: {
-                                sheetId: 0, // Assuming first sheet
+                                sheetId: sheetGridId,
                                 dimension: "ROWS",
                                 startIndex: 1,
                                 endIndex: 1 + newRows.length
@@ -62,8 +72,7 @@ async function prependData(newRows) {
             }
         });
 
-        // 2. Write data
-        // Convert objects to arrays matching column order
+        // 2. Write data to the inserted rows
         const values = newRows.map(row => [
             row.filingDate,
             row.tradeDate,
@@ -80,45 +89,48 @@ async function prependData(newRows) {
         ]);
 
         await sheets.spreadsheets.values.update({
-            spreadsheetId: SPREADSHEET_ID,
-            range: `Sheet1!A2`,
+            spreadsheetId,
+            range: `${sheetName}!A2`,
             valueInputOption: 'USER_ENTERED',
             resource: { values }
         });
 
-        console.log(`Successfully prepended ${newRows.length} rows.`);
-
+        await log(`[Google Sheets] Successfully prepended ${newRows.length} rows to ${sheetName}.`);
     } catch (error) {
-        console.error('Error updating sheet:', error);
+        await log(`[Google Sheets] Error updating sheet: ${error.message}`, true);
         throw error;
     }
 }
 
+/**
+ * Checks if the header row exists on the sheet and creates standard headers if missing.
+ */
 async function initializeSheetHeaders() {
-     // Check if headers exist, if not add them
-     try {
+    try {
+        const { sheets, spreadsheetId, sheetName } = getSheetsContext();
         const response = await sheets.spreadsheets.values.get({
-            spreadsheetId: SPREADSHEET_ID,
-            range: 'Sheet1!A1:L1'
+            spreadsheetId,
+            range: `${sheetName}!A1:L1`
         });
-        
+
         if (!response.data.values || response.data.values.length === 0) {
-            console.log("Headers missing, adding them...");
+            await log(`[Google Sheets] Headers missing on ${sheetName}, initializing headers...`);
             const headers = [
-                "Filing Date", "Trade Date", "Ticker", "Company Name", 
-                "Insider Name", "Title", "Trade Type", "Price", 
+                "Filing Date", "Trade Date", "Ticker", "Company Name",
+                "Insider Name", "Title", "Trade Type", "Price",
                 "Qty", "Owned", "Delta Own", "Value"
             ];
             await sheets.spreadsheets.values.update({
-                spreadsheetId: SPREADSHEET_ID,
-                range: 'Sheet1!A1',
+                spreadsheetId,
+                range: `${sheetName}!A1`,
                 valueInputOption: 'USER_ENTERED',
                 resource: { values: [headers] }
             });
         }
-     } catch (error) {
-         console.error("Error initializing headers:", error);
-     }
+    } catch (error) {
+        await log(`[Google Sheets] Error initializing headers: ${error.message}`, true);
+    }
 }
 
 module.exports = { getExistingData, prependData, initializeSheetHeaders };
+

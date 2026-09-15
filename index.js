@@ -1,38 +1,23 @@
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '.env') });
 
+const { log, sendDiscordNotification } = require('./logger');
 const { scrapeData } = require('./scraper');
 const { getExistingData, prependData, initializeSheetHeaders } = require('./sheets');
 const { analyzeWithGemini } = require('./gemini');
-const axios = require('axios');
-
-const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
-const ENABLE_DISCORD_NOTIFICATIONS = process.env.ENABLE_DISCORD_NOTIFICATIONS === 'true';
 
 /**
- * Helper to log to console and optionally to Discord.
- * @param {string} message - The message to log.
- * @param {boolean} isError - If true, logs as error.
+ * Generates a unique deduplication key for an insider trade record.
+ * @param {object|Array<string>} r - Scraped row object or sheet row array
+ * @returns {string} Unique composite key
  */
-async function log(message, isError = false) {
-    const timestamp = new Date().toISOString();
-    const formattedMessage = `[${timestamp}] ${message}`;
-
-    if (isError) {
-        console.error(formattedMessage);
-    } else {
-        console.log(formattedMessage);
+function generateKey(r) {
+    // Unique key: FilingDate|Ticker|Insider|TradeType
+    // Robust against formatting changes
+    if (Array.isArray(r)) {
+        return `${r[0]}|${r[2]}|${r[4]}|${r[6]}`;
     }
-
-    if (ENABLE_DISCORD_NOTIFICATIONS && DISCORD_WEBHOOK_URL) {
-        try {
-            await axios.post(DISCORD_WEBHOOK_URL, {
-                content: isError ? `🚨 **ERROR**: ${message}` : `ℹ️ ${message}`
-            });
-        } catch (err) {
-            console.error('Failed to send Discord notification:', err.message);
-        }
-    }
+    return `${r.filingDate}|${r.ticker}|${r.insiderName}|${r.tradeType}`;
 }
 
 async function main() {
@@ -49,26 +34,11 @@ async function main() {
             return;
         }
 
-        // Read all rows to use for analysis later, and for duplication checks
+        // 3. Read all rows to use for analysis later, and for duplication checks
         const existingRows = await getExistingData(null);
 
         // 4. Filter New Data
-        // We need a unique key. 
-        // row[0] = Filing Date, row[2] = Ticker, row[4] = Insider Name, row[6] = Trade Type
-        // Note: existingRows comes as array of arrays (strings). scrapedRows is array of objects.
-        
         const newRows = [];
-
-        // Helper to generate key
-        const generateKey = (r) => {
-            // Unique key: FilingDate|Ticker|Insider|TradeType
-            // precise enough and robust against number formatting changes
-            if (Array.isArray(r)) {
-                return `${r[0]}|${r[2]}|${r[4]}|${r[6]}`;
-            }
-            return `${r.filingDate}|${r.ticker}|${r.insiderName}|${r.tradeType}`;
-        };
-
         const existingKeys = new Set(existingRows.map(generateKey));
 
         for (const row of scrapedRows) {
@@ -80,46 +50,26 @@ async function main() {
 
         await log(`[OpenInsider Scraper] Found ${newRows.length} new rows.`);
 
-        // 5. Update Sheet
+        // 5. Update Sheet & Run Analysis if new data exists
         if (newRows.length > 0) {
-            // Note: Scraped data comes "Latest Top" (Validation: OpenInsider sorts date desc).
-            // But if we iterate standard loop, we push latest first.
-            // If we Prepend, we want to maintain that order.
-            // Example:
-            // Scraped: [A (newest), B, C (oldest)]
-            // Sheet: [D, E]
-            // We want Sheet: [A, B, C, D, E]
-            // our prepend function inserts at index 1.
-            // If we insert [A, B, C] at index 1, it will look like Headers -> A, B, C -> D, E.
-            // This preserves the order.
             await prependData(newRows);
             await log(`[OpenInsider Scraper] Successfully added ${newRows.length} rows to the sheet.`);
-            
+
             await log(`[OpenInsider Scraper] Analyzing all data with Gemini...`);
             // Combine new rows and existing rows into a single array format
             const updatedRows = [
                 ...newRows.map(row => [
-                    row.filingDate, row.tradeDate, row.ticker, row.companyName, 
-                    row.insiderName, row.title, row.tradeType, row.price, 
+                    row.filingDate, row.tradeDate, row.ticker, row.companyName,
+                    row.insiderName, row.title, row.tradeType, row.price,
                     row.qty, row.owned, row.deltaOwn, row.value
                 ]),
                 ...existingRows
             ];
+
             const analysis = await analyzeWithGemini(updatedRows);
             if (analysis) {
                 await log(`[OpenInsider Scraper] Gemini Analysis complete. Sending to Discord.`);
-                if (ENABLE_DISCORD_NOTIFICATIONS && DISCORD_WEBHOOK_URL) {
-                    try {
-                        const chunks = analysis.match(/[\s\S]{1,1900}/g) || [];
-                        for (const chunk of chunks) {
-                            await axios.post(DISCORD_WEBHOOK_URL, {
-                                content: `🧠 **Gemini Analysis:**\n${chunk}`
-                            });
-                        }
-                    } catch (err) {
-                        console.error('Failed to send Gemini analysis to Discord:', err.message);
-                    }
-                }
+                await sendDiscordNotification(`🧠 **Gemini Analysis:**\n${analysis}`);
             }
         } else {
             await log('[OpenInsider Scraper] No new data to add.');
@@ -132,3 +82,4 @@ async function main() {
 }
 
 main();
+
