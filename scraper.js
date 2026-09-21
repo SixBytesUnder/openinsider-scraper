@@ -5,6 +5,17 @@ const { log } = require('./logger');
 const TARGET_URL = 'http://openinsider.com/screener?s=&o=&pl=&ph=5&ll=&lh=&fd=180&fdr=&td=0&tdr=&fdlyl=&fdlyh=&daysago=&xp=1&xs=1&vl=25&vh=&ocl=&och=&sic1=-1&sicl=100&sich=9999&grp=0&nfl=&nfh=&nil=&nih=&nol=&noh=&v2l=&v2h=&oc2l=&oc2h=&sortcol=1&cnt=100&page=1';
 
 /**
+ * Strips currency symbols ($), plus signs (+), and formatting commas (,)
+ * from numerical strings while preserving negative signs (-) and decimals.
+ * @param {string} val
+ * @returns {string}
+ */
+function cleanNumber(val) {
+    if (!val) return '';
+    return val.replace(/[+$,]/g, '').trim();
+}
+
+/**
  * Scrapes insider trading rows from OpenInsider.
  * @returns {Promise<Array<object>>} List of parsed row objects
  */
@@ -31,11 +42,11 @@ async function scrapeData() {
                 insiderName: $(cells[5]).text().trim(),
                 title: $(cells[6]).text().trim(),
                 tradeType: $(cells[7]).text().trim(),
-                price: $(cells[8]).text().trim().replace(/[$,]/g, ''),
-                qty: $(cells[9]).text().trim().replace(/[+,]/g, ''),
-                owned: $(cells[10]).text().trim().replace(/[+,]/g, ''),
-                deltaOwn: $(cells[11]).text().trim(),
-                value: $(cells[12]).text().trim().replace(/[+$,]/g, ''),
+                price: cleanNumber($(cells[8]).text()),
+                qty: cleanNumber($(cells[9]).text()),
+                owned: cleanNumber($(cells[10]).text()),
+                deltaOwn: $(cells[11]).text().trim().replace(/^\+/, ''),
+                value: cleanNumber($(cells[12]).text()),
             };
 
             // Basic validation to ensure it's a valid data row
@@ -52,5 +63,5 @@ async function scrapeData() {
     }
 }
 
-module.exports = { scrapeData };
+module.exports = { scrapeData, cleanNumber };
 

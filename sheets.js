@@ -43,6 +43,17 @@ async function getExistingData(limit = 200) {
 }
 
 /**
+ * Strips currency symbols ($), plus signs (+), and formatting commas (,)
+ * from numerical strings while preserving negative signs (-) and decimals.
+ * @param {string|number} val
+ * @returns {string}
+ */
+function cleanNumber(val) {
+    if (val === null || val === undefined) return '';
+    return String(val).replace(/[+$,]/g, '').trim();
+}
+
+/**
  * Inserts new rows at the top of the Google Sheet (after headers).
  * @param {Array<object>} newRows - Array of scraped row objects to insert
  */
@@ -81,11 +92,11 @@ async function prependData(newRows) {
             row.insiderName,
             row.title,
             row.tradeType,
-            row.price,
-            row.qty,
-            row.owned,
-            row.deltaOwn,
-            row.value
+            cleanNumber(row.price),
+            cleanNumber(row.qty),
+            cleanNumber(row.owned),
+            typeof row.deltaOwn === 'string' ? row.deltaOwn.replace(/^\+/, '') : row.deltaOwn,
+            cleanNumber(row.value)
         ]);
 
         await sheets.spreadsheets.values.update({
@@ -98,6 +109,75 @@ async function prependData(newRows) {
         await log(`[Google Sheets] Successfully prepended ${newRows.length} rows to ${sheetName}.`);
     } catch (error) {
         await log(`[Google Sheets] Error updating sheet: ${error.message}`, true);
+        throw error;
+    }
+}
+
+/**
+ * Scans existing rows in the sheet and repairs any corrupted numerical values
+ * (e.g. values containing '$', leading '+', or formulas causing '#ERROR!').
+ * @returns {Promise<number>} Number of repaired rows
+ */
+async function cleanExistingSheetData() {
+    try {
+        const { sheets, spreadsheetId, sheetName } = getSheetsContext();
+        const response = await sheets.spreadsheets.values.get({
+            spreadsheetId,
+            range: `${sheetName}!A2:L`,
+            valueRenderOption: 'FORMULA'
+        });
+
+        const rows = response.data.values || [];
+        if (rows.length === 0) return 0;
+
+        let repairedCount = 0;
+        const dataToUpdate = [];
+
+        rows.forEach((r, idx) => {
+            const origPrice = r[7];
+            const origQty = r[8];
+            const origOwned = r[9];
+            const origDeltaOwn = r[10];
+            const origValue = r[11];
+
+            const cleanPrice = cleanNumber(origPrice);
+            const cleanQty = cleanNumber(origQty);
+            const cleanOwned = cleanNumber(origOwned);
+            const cleanDeltaOwn = typeof origDeltaOwn === 'string' ? origDeltaOwn.replace(/^\+/, '') : origDeltaOwn;
+            const cleanVal = cleanNumber(origValue);
+
+            if (
+                String(origPrice ?? '') !== cleanPrice ||
+                String(origQty ?? '') !== cleanQty ||
+                String(origOwned ?? '') !== cleanOwned ||
+                origDeltaOwn !== cleanDeltaOwn ||
+                String(origValue ?? '') !== cleanVal
+            ) {
+                repairedCount++;
+                const rowIndex = idx + 2;
+                dataToUpdate.push({
+                    range: `${sheetName}!H${rowIndex}:L${rowIndex}`,
+                    values: [[cleanPrice, cleanQty, cleanOwned, cleanDeltaOwn, cleanVal]]
+                });
+            }
+        });
+
+        if (dataToUpdate.length > 0) {
+            await sheets.spreadsheets.values.batchUpdate({
+                spreadsheetId,
+                resource: {
+                    valueInputOption: 'USER_ENTERED',
+                    data: dataToUpdate
+                }
+            });
+            await log(`[Google Sheets] Cleaned up ${repairedCount} corrupted rows in ${sheetName}.`);
+        } else {
+            await log(`[Google Sheets] All rows in ${sheetName} are already clean.`);
+        }
+
+        return repairedCount;
+    } catch (error) {
+        await log(`[Google Sheets] Error cleaning existing sheet data: ${error.message}`, true);
         throw error;
     }
 }
@@ -132,5 +212,5 @@ async function initializeSheetHeaders() {
     }
 }
 
-module.exports = { getExistingData, prependData, initializeSheetHeaders };
+module.exports = { getExistingData, prependData, initializeSheetHeaders, cleanExistingSheetData, cleanNumber };
 
